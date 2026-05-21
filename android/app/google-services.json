@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "655135892566",
+    "firebase_url": "https://mario-gaming-cafe-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "mario-gaming-cafe",
+    "storage_bucket": "mario-gaming-cafe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655135892566:android:0f7d9bba6296de19d607f7",
+        "android_client_info": {
+          "package_name": "com.mariogaming.dashboard"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBwWn8oaSBItAhXUX0dpSIDmD3hMiqfoSw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
