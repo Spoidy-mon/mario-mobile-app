@@ -30,10 +30,6 @@ android {
         jvmTarget = "17"
     }
 
-    sourceSets {
-        main.java.srcDirs += "src/main/kotlin"
-    }
-
     defaultConfig {
         applicationId "com.mariogaming.dashboard"
         minSdkVersion flutter.minSdkVersion
