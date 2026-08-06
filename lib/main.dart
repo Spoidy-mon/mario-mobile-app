@@ -4,7 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'services/dashboard_provider.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
+import 'theme/app_colors.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,7 +13,11 @@ void main() async {
     statusBarColor: Colors.transparent,
     statusBarIconBrightness: Brightness.light,
   ));
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    // already initialized
+  }
   runApp(const MarioDashboardApp());
 }
 
@@ -28,13 +33,13 @@ class MarioDashboardApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: const ColorScheme.dark(
-            primary: Color(0xFF6366F1),
-            surface: Color(0xFF1A1A2E),
+            primary: AppColors.primary,
+            surface: AppColors.card,
           ),
-          scaffoldBackgroundColor: const Color(0xFF0D0D1A),
+          scaffoldBackgroundColor: AppColors.bg,
           useMaterial3: true,
         ),
-        home: const HomeScreen(),
+        home: const SplashScreen(),
       ),
     );
   }

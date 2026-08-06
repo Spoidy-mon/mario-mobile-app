@@ -1,3 +1,22 @@
+/// Only these statuses mean a session is actually IN PROGRESS (someone
+/// playing, timer running). "online" / "available" means the PC/PS5 is
+/// powered on and the client software is reporting in, but NOBODY is
+/// using it — that must NOT count as an active session. This was the bug:
+/// a too-broad blacklist previously treated "online" as active.
+const _activeStatuses = {
+  'active',
+  'running',
+  'in_use',
+  'in-use',
+  'busy',
+  'occupied',
+  'in_session',
+  'playing',
+};
+
+bool isStatusActive(String status) =>
+    _activeStatuses.contains(status.toLowerCase().trim());
+
 class DashboardStats {
   final int activePcSessions;
   final int activePs5Sessions;
@@ -59,8 +78,17 @@ class PcStatus {
     this.paymentStatus = '',
   });
 
-  bool get isActive => status == 'active';
-  bool get isLow => isActive && timeRemaining <= 300 && !isPaused;
+  /// A status word alone isn't enough proof — Firebase can be left with a
+  /// stale "active" flag from a session that ended without properly
+  /// resetting. Requiring time_remaining > 0 too means a session only
+  /// counts as live if there's an actual running countdown.
+  /// A session counts as live if the status looks active AND there's real
+  /// evidence of an ongoing session — either time still on the clock, or a
+  /// customer assigned to it. Requiring time alone missed paused/unlimited
+  /// sessions; requiring status alone counted stale leftover flags.
+  bool get isActive =>
+      isStatusActive(status) && (timeRemaining > 0 || customerName.isNotEmpty);
+  bool get isLow => isActive && timeRemaining <= 300 && timeRemaining > 0 && !isPaused;
   String get timeStr {
     if (timeRemaining <= 0) return '00:00';
     final h = timeRemaining ~/ 3600;
@@ -88,7 +116,8 @@ class Ps5Status {
     this.paymentStatus = '',
   });
 
-  bool get isActive => status == 'active';
+  bool get isActive =>
+      isStatusActive(status) && (timeRemaining > 0 || customerName.isNotEmpty);
   String get timeStr {
     if (timeRemaining <= 0) return '00:00';
     final h = timeRemaining ~/ 3600;
