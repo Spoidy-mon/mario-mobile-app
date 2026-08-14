@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../services/dashboard_provider.dart';
 import '../widgets/session_tile.dart';
 import '../widgets/fade_slide_in.dart';
+import '../widgets/start_session_dialog.dart';
 import '../theme/app_colors.dart';
 
 class SessionsScreen extends StatelessWidget {
@@ -11,8 +12,6 @@ class SessionsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final stats = context.watch<DashboardProvider>().stats;
-    final onlinePcs = stats.pcs.where((pc) => pc.status.toLowerCase() != 'offline').toList();
-    final onlinePs5s = stats.ps5s.where((ps) => ps.status.toLowerCase() != 'offline').toList();
     int step = 0;
     Duration next() {
       final d = Duration(milliseconds: 50 * step);
@@ -24,7 +23,7 @@ class SessionsScreen extends StatelessWidget {
       backgroundColor: AppColors.bg,
       appBar: AppBar(
         backgroundColor: AppColors.bg,
-        title: const Text('Active Sessions',
+        title: const Text('Sessions',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
@@ -33,7 +32,7 @@ class SessionsScreen extends StatelessWidget {
         children: [
           _Section(
             title: '🖥  PCs  (${stats.activePcSessions} active)',
-            children: onlinePcs
+            children: stats.pcs
                 .map((pc) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: FadeSlideIn(
@@ -46,15 +45,50 @@ class SessionsScreen extends StatelessWidget {
                           timeStr: pc.timeStr,
                           customerName: pc.customerName,
                           paymentStatus: pc.paymentStatus,
+                          onTap: pc.isActive
+                              ? null
+                              : () => showStartSessionDialog(
+                                    context,
+                                    title: 'Start Session · ${pc.name}',
+                                    firebaseNode: 'pcs/${pc.firebaseKey}',
+                                    deviceType: SessionDeviceType.pc,
+                                  ),
                         ),
                       ),
                     ))
                 .toList(),
           ),
           const SizedBox(height: 16),
+          if (stats.wheel != null)
+            _Section(
+              title: '🏎  Racing Wheel',
+              children: [
+                FadeSlideIn(
+                  delay: next(),
+                  child: SessionTile(
+                    label: stats.wheel!.name,
+                    status: stats.wheel!.status,
+                    isPaused: stats.wheel!.isPaused,
+                    isLow: stats.wheel!.isLow,
+                    timeStr: stats.wheel!.timeStr,
+                    customerName: stats.wheel!.customerName,
+                    paymentStatus: stats.wheel!.paymentStatus,
+                    onTap: stats.wheel!.isActive
+                        ? null
+                        : () => showStartSessionDialog(
+                              context,
+                              title: 'Start Session · Wheel',
+                              firebaseNode: 'wheel_sessions/${stats.wheel!.firebaseKey}',
+                              deviceType: SessionDeviceType.wheel,
+                            ),
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 16),
           _Section(
             title: '🎮  PS5  (${stats.activePs5Sessions} active)',
-            children: onlinePs5s
+            children: stats.ps5s
                 .map((ps) => Padding(
                       padding: const EdgeInsets.only(bottom: 8),
                       child: FadeSlideIn(
@@ -67,6 +101,14 @@ class SessionsScreen extends StatelessWidget {
                           timeStr: ps.timeStr,
                           customerName: ps.customerName,
                           paymentStatus: ps.paymentStatus,
+                          onTap: ps.isActive
+                              ? null
+                              : () => showStartSessionDialog(
+                                    context,
+                                    title: 'Start Session · PS5 #${ps.slot}',
+                                    firebaseNode: 'ps5_sessions/${ps.firebaseKey}',
+                                    deviceType: SessionDeviceType.ps5,
+                                  ),
                         ),
                       ),
                     ))
