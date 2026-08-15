@@ -4,6 +4,7 @@ import '../services/dashboard_provider.dart';
 import '../widgets/session_tile.dart';
 import '../widgets/fade_slide_in.dart';
 import '../widgets/start_session_dialog.dart';
+import '../widgets/end_session_dialog.dart';
 import '../theme/app_colors.dart';
 
 class SessionsScreen extends StatelessWidget {
@@ -46,11 +47,18 @@ class SessionsScreen extends StatelessWidget {
                           customerName: pc.customerName,
                           paymentStatus: pc.paymentStatus,
                           onTap: pc.isActive
-                              ? null
+                              ? () => showEndSessionDialog(
+                                    context,
+                                    firebaseNode: 'pcs/${pc.firebaseKey}',
+                                    deviceName: pc.name,
+                                    customerName: pc.customerName,
+                                    timeLeft: pc.timeStr,
+                                  )
                               : () => showStartSessionDialog(
                                     context,
                                     title: 'Start Session · ${pc.name}',
                                     firebaseNode: 'pcs/${pc.firebaseKey}',
+                                    deviceName: pc.name,
                                     deviceType: SessionDeviceType.pc,
                                   ),
                         ),
@@ -74,11 +82,19 @@ class SessionsScreen extends StatelessWidget {
                     customerName: stats.wheel!.customerName,
                     paymentStatus: stats.wheel!.paymentStatus,
                     onTap: stats.wheel!.isActive
-                        ? null
+                        ? () => showEndSessionDialog(
+                              context,
+                              firebaseNode:
+                                  'wheel_sessions/${stats.wheel!.firebaseKey}',
+                              deviceName: stats.wheel!.name,
+                              customerName: stats.wheel!.customerName,
+                              timeLeft: stats.wheel!.timeStr,
+                            )
                         : () => showStartSessionDialog(
                               context,
                               title: 'Start Session · Wheel',
                               firebaseNode: 'wheel_sessions/${stats.wheel!.firebaseKey}',
+                              deviceName: stats.wheel!.name,
                               deviceType: SessionDeviceType.wheel,
                             ),
                   ),
@@ -102,11 +118,18 @@ class SessionsScreen extends StatelessWidget {
                           customerName: ps.customerName,
                           paymentStatus: ps.paymentStatus,
                           onTap: ps.isActive
-                              ? null
+                              ? () => showEndSessionDialog(
+                                    context,
+                                    firebaseNode: 'ps5_sessions/${ps.firebaseKey}',
+                                    deviceName: 'PS5 #${ps.slot}',
+                                    customerName: ps.customerName,
+                                    timeLeft: ps.timeStr,
+                                  )
                               : () => showStartSessionDialog(
                                     context,
                                     title: 'Start Session · PS5 #${ps.slot}',
                                     firebaseNode: 'ps5_sessions/${ps.firebaseKey}',
+                                    deviceName: 'PS5 #${ps.slot}',
                                     deviceType: SessionDeviceType.ps5,
                                   ),
                         ),

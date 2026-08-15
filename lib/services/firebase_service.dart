@@ -1,4 +1,5 @@
 import 'package:firebase_database/firebase_database.dart';
+import 'canteen_cart_line.dart';
 
 class FirebaseService {
   static final _db = FirebaseDatabase.instance;
@@ -71,22 +72,128 @@ class FirebaseService {
   /// Starts a session on a PC, the Wheel, or a PS5 — writes straight to
   /// the same node the desktop client reads from, using .update() so
   /// existing fields (id, name, slot) on that node are left untouched.
+  /// ALSO pushes (or merges into) a pending due for the session amount —
+  /// without this, the charge only ever lived as a field on the device
+  /// node and never actually showed up on the Dues screen.
   static Future<void> startSession({
     required String node, // e.g. 'pcs/3', 'wheel_sessions/w1', 'ps5_sessions/2'
+    required String deviceName, // friendly label, e.g. 'PC-3', 'Wheel', 'PS5 #2'
     required String customerName,
     required int minutes,
-    required double amount,
+    required double amount, // regular session price, recorded on the device node
+    double? dueAmount, // what actually gets charged to their due — defaults
+                        // to [amount]; pass 0 for a member session that's
+                        // covered by their membership instead of billed
+    String? note, // overrides the default "$minutes min session" due label
     int players = 1,
-  }) {
-    return _db.ref(node).update({
+    bool isMember = false,
+    String memberPlan = '',
+  }) async {
+    await _db.ref(node).update({
       'status': 'active',
       'customer_name': customerName,
       'time_remaining': minutes * 60, // stored in seconds
       'session_amount': amount,
       'players': players,
-      'payment_status': 'pending',
+      'payment_status': (dueAmount ?? amount) <= 0 ? 'covered' : 'pending',
       'is_paused': false,
+      'is_member': isMember,
+      'member_plan': memberPlan,
       'started_at': ServerValue.timestamp,
+    });
+
+    await _addOrMergeDue(
+      customerName: customerName,
+      pcName: deviceName,
+      amount: dueAmount ?? amount,
+      itemLabel: note ?? '$minutes min session',
+      source: 'gaming',
+      isMember: isMember,
+      memberPlan: memberPlan,
+    );
+  }
+
+  /// Adds a charge to a customer's tab — merging into their existing
+  /// unpaid due for the same PC/device if one already exists (so a
+  /// canteen snack bought mid-session and the session charge itself land
+  /// in ONE combined bill instead of two separate due entries), or
+  /// starting a new due if this is their first charge. Shared by both
+  /// `startSession` (gaming time) and `sellCanteenItems` (food/drinks).
+  static Future<void> _addOrMergeDue({
+    required String customerName,
+    required String pcName,
+    required double amount,
+    required String itemLabel,
+    required String source,
+    bool isMember = false,
+    String memberPlan = '',
+  }) async {
+    String? existingKey;
+    double existingAmount = 0;
+    String existingItems = '';
+
+    final snap = await _db.ref('pending_dues').get();
+    if (snap.exists && snap.value is Map) {
+      (snap.value as Map).forEach((key, value) {
+        if (existingKey != null) return; // already found a match
+        if (value is! Map) return;
+        if (value['paid'] == true) return;
+
+        final duePc = value['pc_name']?.toString() ?? '';
+        final dueCustomer = value['customer_name']?.toString() ?? '';
+
+        final matchesByPc = pcName.isNotEmpty && duePc == pcName;
+        final matchesByNameOnly = pcName.isEmpty && dueCustomer == customerName;
+
+        if (matchesByPc || matchesByNameOnly) {
+          existingKey = key.toString();
+          existingAmount =
+              (value['amount'] is num) ? (value['amount'] as num).toDouble() : 0.0;
+          existingItems = value['items']?.toString() ?? '';
+        }
+      });
+    }
+
+    if (existingKey != null) {
+      final mergedItems =
+          existingItems.isEmpty ? itemLabel : '$existingItems, $itemLabel';
+      await _db.ref('pending_dues/$existingKey').update({
+        'amount': existingAmount + amount,
+        'items': mergedItems,
+        'customer_name': customerName,
+        if (pcName.isNotEmpty) 'pc_name': pcName,
+        if (isMember) 'is_member': true,
+        if (memberPlan.isNotEmpty) 'member_plan': memberPlan,
+      });
+    } else {
+      await _db.ref('pending_dues').push().set({
+        'customer_name': customerName,
+        'pc_name': pcName,
+        'amount': amount,
+        'items': itemLabel,
+        'source': source,
+        'is_member': isMember,
+        'member_plan': memberPlan,
+        'paid': false,
+        'created_at': ServerValue.timestamp,
+      });
+    }
+  }
+
+  /// Ends a session — frees the PC/Wheel/PS5 back to idle. Does NOT touch
+  /// any due; the session amount was already added to the customer's tab
+  /// when it started, so ending it early just stops the timer and clears
+  /// the device, without silently changing what they owe.
+  static Future<void> endSession(String node) {
+    return _db.ref(node).update({
+      'status': 'offline',
+      'is_paused': false,
+      'time_remaining': 0,
+      'customer_name': '',
+      'payment_status': '',
+      'is_member': false,
+      'member_plan': '',
+      'ended_at': ServerValue.timestamp,
     });
   }
 
@@ -200,6 +307,62 @@ class FirebaseService {
       'emoji': emoji,
       'created_at': ServerValue.timestamp,
     });
+  }
+
+  /// Sells one or more canteen items. If [chargeToCustomerName] is given
+  /// (an active PC/PS5 customer), the total is added to their tab. If a
+  /// PENDING due already exists for that same PC (or, when no PC is given,
+  /// the same customer name), the canteen amount is MERGED into that same
+  /// due — so a PC's gaming time and their canteen snacks show up as one
+  /// combined bill, not two separate line items. Only creates a new due
+  /// entry if nothing matching exists yet.
+  ///
+  /// If [chargeToCustomerName] is null, it's an immediate walk-in cash/UPI
+  /// sale and gets written straight to `sales` for today's revenue.
+  ///
+  /// Either way, each item's stock is decremented by the quantity sold.
+  static Future<void> sellCanteenItems({
+    required List<CanteenCartLine> items,
+    String? chargeToCustomerName,
+    String? chargeToPcName,
+    String paymentMode = 'cash',
+  }) async {
+    final total = items.fold<double>(0, (sum, i) => sum + i.lineTotal);
+    final itemsSummary =
+        items.map((i) => '${i.name} x${i.quantity}').join(', ');
+
+    if (chargeToCustomerName != null && chargeToCustomerName.isNotEmpty) {
+      await _addOrMergeDue(
+        customerName: chargeToCustomerName,
+        pcName: chargeToPcName ?? '',
+        amount: total,
+        itemLabel: itemsSummary,
+        source: 'canteen',
+      );
+    } else {
+      // Walk-in — paid on the spot (cash or UPI), counts as today's
+      // canteen revenue. pc_name is optional here — just a reporting tag,
+      // doesn't affect any due.
+      await _db.ref('sales').push().set({
+        'items': itemsSummary,
+        'total': total,
+        'payment_mode': paymentMode,
+        if (chargeToPcName != null && chargeToPcName.isNotEmpty)
+          'pc_name': chargeToPcName,
+        'returned': false,
+        'sold_at': ServerValue.timestamp,
+      });
+    }
+
+    // Decrement stock for every item sold, regardless of charge type.
+    for (final item in items) {
+      await adjustStock(
+        item.stockKey,
+        item.quantity.toDouble() * -1,
+        sourceNode: item.sourceNode,
+        quantityField: item.quantityField,
+      );
+    }
   }
 
   /// Wipes every child under a node — used by the Diagnostics screen to
