@@ -35,6 +35,7 @@ class DashboardStats {
   final List<PcStatus> pcs;
   final List<Ps5Status> ps5s;
   final List<DueItem> dues;
+  final PcStatus? wheel;
 
   const DashboardStats({
     this.activePcSessions = 0,
@@ -54,6 +55,7 @@ class DashboardStats {
     this.pcs = const [],
     this.ps5s = const [],
     this.dues = const [],
+    this.wheel,
   });
 
   int get totalActive => activePcSessions + activePs5Sessions;
@@ -61,6 +63,9 @@ class DashboardStats {
 
 class PcStatus {
   final int id;
+  final String firebaseKey; // the real Firebase node key — needed to write
+                              // back to the SAME record when starting a
+                              // session, since it may differ from "id".
   final String name;
   final String status; // offline | online | active
   final bool isPaused;
@@ -70,6 +75,7 @@ class PcStatus {
 
   const PcStatus({
     required this.id,
+    required this.firebaseKey,
     required this.name,
     required this.status,
     this.isPaused = false,
@@ -80,12 +86,11 @@ class PcStatus {
 
   /// A status word alone isn't enough proof — Firebase can be left with a
   /// stale "active" flag from a session that ended without properly
-  /// resetting. Requiring time_remaining > 0 too means a session only
-  /// counts as live if there's an actual running countdown.
-  /// A session counts as live if the status looks active AND there's real
-  /// evidence of an ongoing session — either time still on the clock, or a
-  /// customer assigned to it. Requiring time alone missed paused/unlimited
-  /// sessions; requiring status alone counted stale leftover flags.
+  /// resetting. A session counts as live if the status looks active AND
+  /// there's real evidence of an ongoing session — either time still on
+  /// the clock, or a customer assigned to it. Requiring time alone missed
+  /// paused/unlimited sessions; requiring status alone counted stale
+  /// leftover flags.
   bool get isActive =>
       isStatusActive(status) && (timeRemaining > 0 || customerName.isNotEmpty);
   bool get isLow => isActive && timeRemaining <= 300 && timeRemaining > 0 && !isPaused;
@@ -101,6 +106,7 @@ class PcStatus {
 
 class Ps5Status {
   final int slot;
+  final String firebaseKey; // real Firebase node key, for writing sessions back
   final String status;
   final bool isPaused;
   final int timeRemaining;
@@ -109,6 +115,7 @@ class Ps5Status {
 
   const Ps5Status({
     required this.slot,
+    required this.firebaseKey,
     required this.status,
     this.isPaused = false,
     this.timeRemaining = 0,

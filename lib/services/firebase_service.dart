@@ -21,6 +21,9 @@ class FirebaseService {
 
   static Stream<DatabaseEvent> settingsStream() => _db.ref('settings').onValue;
 
+  /// Live stream of the single wheel device.
+  static Stream<DatabaseEvent> wheelStream() => _db.ref('wheel_sessions').onValue;
+
   // ── Streams (Partner Ledger) ────────────────────────────────────────────
 
   static Stream<DatabaseEvent> membershipStream() =>
@@ -62,6 +65,30 @@ class FirebaseService {
   static Stream<DatabaseEvent> membersAltStream() => _db.ref('members').onValue;
   static Stream<DatabaseEvent> membershipAltStream() =>
       _db.ref('membership').onValue;
+
+  // ── Writers (Sessions) ───────────────────────────────────────────────────
+
+  /// Starts a session on a PC, the Wheel, or a PS5 — writes straight to
+  /// the same node the desktop client reads from, using .update() so
+  /// existing fields (id, name, slot) on that node are left untouched.
+  static Future<void> startSession({
+    required String node, // e.g. 'pcs/3', 'wheel_sessions/w1', 'ps5_sessions/2'
+    required String customerName,
+    required int minutes,
+    required double amount,
+    int players = 1,
+  }) {
+    return _db.ref(node).update({
+      'status': 'active',
+      'customer_name': customerName,
+      'time_remaining': minutes * 60, // stored in seconds
+      'session_amount': amount,
+      'players': players,
+      'payment_status': 'pending',
+      'is_paused': false,
+      'started_at': ServerValue.timestamp,
+    });
+  }
 
   // ── Writers (Partner Ledger) ────────────────────────────────────────────
 
@@ -148,10 +175,6 @@ class FirebaseService {
     await _db.ref('pending_dues/$dueKey').remove();
   }
 
-  /// Adds a new canteen stock item — always writes to the canonical
-  /// `canteen_stock` node, so once you add even one item through the app
-  /// this becomes the winning source and stock reliably shows up from then
-  /// on, regardless of what any other app calls its stock node.
   /// Adds a new stock/menu item. [node] should be whatever DashboardProvider
   /// says is the currently-active source (`stockSourceNode`) so it lands in
   /// the SAME list your real menu already lives in — not a separate,
@@ -254,6 +277,7 @@ class FirebaseService {
     return _db.ref('pending_dues/$dueKey').remove();
   }
 
+  /// Adds a new member. [node] should be whatever DashboardProvider says is
   /// the currently-active source node (`membersSourceNode`) so the new
   /// member lands in the SAME list your existing members are already in,
   /// instead of accidentally starting a second, invisible list.

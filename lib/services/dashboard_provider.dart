@@ -60,9 +60,7 @@ class DashboardProvider extends ChangeNotifier {
     return const {'p1': '', 'p2': '', 'p3': ''};
   }
 
-  /// Password required to add a Mario Gaming expense. Defaults to "1234"
-  /// until changed via Settings.
-  /// The Mario Gaming expense password is fixed at "sam123" — hardcoded
+  /// The Mario Gaming expense password is fixed at "2811" — hardcoded
   /// here rather than read from Firebase, so it cannot be changed by
   /// anyone editing settings in the app, or by editing the database
   /// directly. Changing it requires editing this line in the app's source
@@ -85,6 +83,7 @@ class DashboardProvider extends ChangeNotifier {
   Map<dynamic, dynamic> _paymentsRaw = {};
   List<dynamic> _metreRaw = [];
   Map<dynamic, dynamic> _settingsRaw = {};
+  Map<dynamic, dynamic> _wheelRaw = {};
 
   // Raw caches — Partner Ledger
   Map<dynamic, dynamic> _membershipRaw = {};
@@ -116,6 +115,7 @@ class DashboardProvider extends ChangeNotifier {
     _subs.add(FirebaseService.paymentsStream().listen(_onPayments, onError: _onErr));
     _subs.add(FirebaseService.metreStream().listen(_onMetre, onError: _onErr));
     _subs.add(FirebaseService.settingsStream().listen(_onSettings, onError: _onErr));
+    _subs.add(FirebaseService.wheelStream().listen(_onWheel, onError: _onErr));
 
     // Partner Ledger streams
     _subs.add(FirebaseService.membershipStream().listen(_onMembership, onError: _onErr));
@@ -212,6 +212,11 @@ class DashboardProvider extends ChangeNotifier {
 
   void _onSettings(DatabaseEvent e) {
     _settingsRaw = _normalizeToMap(e.snapshot.value);
+    _rebuild();
+  }
+
+  void _onWheel(DatabaseEvent e) {
+    _wheelRaw = _normalizeToMap(e.snapshot.value);
     _rebuild();
   }
 
@@ -317,6 +322,7 @@ class DashboardProvider extends ChangeNotifier {
       final timeRem = _toInt(pc['time_remaining']);
       pcs.add(PcStatus(
         id: _toInt(pc['id']),
+        firebaseKey: entry.key.toString(),
         name: pc['name']?.toString() ?? 'PC-?',
         status: status,
         isPaused: isPaused,
@@ -338,6 +344,7 @@ class DashboardProvider extends ChangeNotifier {
       final status = s['status']?.toString() ?? 'offline';
       ps5s.add(Ps5Status(
         slot: _toInt(s['slot']),
+        firebaseKey: entry.key.toString(),
         status: status,
         isPaused: s['is_paused'] == true,
         timeRemaining: _toInt(s['time_remaining']),
@@ -347,6 +354,25 @@ class DashboardProvider extends ChangeNotifier {
     }
     final activePs5 = ps5s.where((p) => p.isActive).length;
     ps5s.sort((a, b) => a.slot.compareTo(b.slot));
+
+    // ── Wheel (single device) ───────────────────────────────────────────
+    PcStatus? wheel;
+    if (_wheelRaw.isNotEmpty) {
+      final entry = _wheelRaw.entries.first;
+      final w = _asMap(entry.value);
+      if (w != null) {
+        wheel = PcStatus(
+          id: 1,
+          firebaseKey: entry.key.toString(),
+          name: w['name']?.toString() ?? 'Wheel',
+          status: w['status']?.toString() ?? 'offline',
+          isPaused: w['is_paused'] == true,
+          timeRemaining: _toInt(w['time_remaining']),
+          customerName: w['customer_name']?.toString() ?? '',
+          paymentStatus: w['payment_status']?.toString() ?? '',
+        );
+      }
+    }
 
     // ── Today's payments (gaming) ─────────────────────────────────────────
     double gamingCash = 0, gamingUpi = 0;
@@ -431,6 +457,7 @@ class DashboardProvider extends ChangeNotifier {
       pcs: pcs,
       ps5s: ps5s,
       dues: dues,
+      wheel: wheel,
     );
 
     // Each section is isolated: a failure in one (bad/unexpected data in a
